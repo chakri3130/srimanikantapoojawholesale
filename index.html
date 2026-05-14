@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lightweight Catalog</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons (CDN) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Alpine.js (CDN) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style>
+        /* Glassmorphism utility classes */
+        .glass-header {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+        }
+        
+        .glass-modal {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-left: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.08);
+        }
+        
+        /* Hide scrollbar for category chips */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        /* Prevent body scroll when modal is open */
+        body.modal-open {
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen" x-data="catalogApp()" :class="isCartOpen ? 'modal-open' : ''">
+
+    <!-- Header Glassmorphism -->
+    <header class="sticky top-0 z-30 glass-header shadow-sm transition-all">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-600 text-white rounded-xl flex justify-center items-center shadow-md">
+                    <i class="fa-solid fa-store text-xl"></i>
+                </div>
+                <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">SwiftStore</h1>
+            </div>
+            
+            <!-- Desktop Navbar Hint -->
+            <button @click="isCartOpen = true" class="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-full font-medium hover:bg-slate-800 transition shadow-md hover:shadow-lg active:translate-y-px">
+                <i class="fa-solid fa-cart-shopping"></i>
+                <span>View Cart</span>
+                <span x-show="cartCount > 0" x-cloak class="bg-blue-500 text-white px-2 py-0.5 rounded-full text-xs font-bold" x-text="cartCount"></span>
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-28">
+        
+        <!-- Controls: Search & Filters -->
+        <div class="mb-8 space-y-5">
+            <!-- Search Bar -->
+            <div class="relative max-w-md mx-auto sm:mx-0">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input x-model="searchQuery" type="text" placeholder="Search products..." 
+                    class="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-slate-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-slate-700">
+            </div>
+
+            <!-- Category Chips -->
+            <div class="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide snap-x">
+                <template x-for="category in categories" :key="category">
+                    <button @click="selectedCategory = category" 
+                        :class="selectedCategory === category ? 'bg-slate-900 text-white shadow-md border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'"
+                        class="snap-start px-5 py-2.5 rounded-full border whitespace-nowrap font-semibold text-sm transition-all focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-1"
+                        x-text="category">
+                    </button>
+                </template>
+            </div>
+        </div>
+
+        <!-- 2-Column Responsive Product Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            <template x-for="product in filteredProducts" :key="product.id">
+                <div class="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col h-full group">
+                    <div class="aspect-square bg-slate-100 relative overflow-hidden">
+                        <img :src="product.image" :alt="product.name" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy">
+                        <div class="absolute top-3 left-3 px-2.5 py-1 bg-white/90 backdrop-blur shadow-sm text-xs border border-white/50 font-bold tracking-wide rounded-lg text-slate-800 uppercase" x-text="product.category"></div>
+                    </div>
+                    <div class="p-4 sm:p-5 flex flex-col flex-grow">
+                        <h3 class="font-bold text-slate-800 text-sm sm:text-base leading-snug mb-1 line-clamp-2" x-text="product.name"></h3>
+                        <div class="mt-auto pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <span class="font-extrabold text-slate-900 text-lg">₹<span x-text="product.price"></span></span>
+                            <button @click="addToCart(product)" class="w-full sm:w-auto px-4 py-2 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-100 font-semibold rounded-xl transition-colors active:scale-95 flex justify-center items-center gap-2">
+                                <i class="fa-solid fa-plus text-sm"></i> <span class="sm:hidden">Add</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+        
+        <!-- Empty State -->
+        <div x-show="filteredProducts.length === 0" x-cloak class="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-300 mt-4">
+            <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                <i class="fa-solid fa-box-open text-2xl"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-900 mb-1">No products found</h3>
+            <p class="text-slate-500">Try adjusting your search criteria or categories.</p>
+        </div>
+
+    </main>
+
+    <!-- Floating View Cart Button (Mobile primary, shown always if items exist) -->
+    <button @click="isCartOpen = true" 
+        class="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-40 bg-slate-900 text-white w-16 h-16 rounded-2xl flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.2)] hover:bg-slate-800 hover:-translate-y-1 transition-all">
+        <i class="fa-solid fa-bag-shopping text-2xl"></i>
+        <div x-show="cartCount > 0" x-cloak
+            x-transition:enter="transition scale-up duration-300"
+            x-transition:enter-start="scale-0"
+            x-transition:enter-end="scale-100"
+            class="absolute -top-2 -right-2 bg-red-500 text-white min-w-[24px] h-6 rounded-full flex items-center justify-center text-xs font-bold px-1.5 ring-4 ring-slate-50 shadow-sm"
+            x-text="cartCount">
+        </div>
+    </button>
+
+    <!-- Cart Slide-Over Modal -->
+    <div x-show="isCartOpen" style="display: none;" class="relative z-50">
+        <!-- Backdrop -->
+        <div x-show="isCartOpen" 
+            x-transition.opacity.duration.300ms
+            class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" 
+            @click="isCartOpen = false"></div>
+
+        <!-- Slide-over panel -->
+        <div class="fixed inset-0 overflow-hidden">
+            <div class="absolute inset-0 overflow-hidden">
+                <div class="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-0 sm:pl-10">
+                    <div x-show="isCartOpen" 
+                        x-transition:enter="transform transition ease-out duration-300" 
+                        x-transition:enter-start="translate-x-full" 
+                        x-transition:enter-end="translate-x-0" 
+                        x-transition:leave="transform transition ease-in duration-300" 
+                        x-transition:leave-start="translate-x-0" 
+                        x-transition:leave-end="translate-x-full" 
+                        class="pointer-events-auto w-screen max-w-md">
+                        
+                        <!-- Cart Container with Glassmorphism -->
+                        <div class="flex h-full flex-col glass-modal shadow-2xl relative">
+                            
+                            <!-- Cart Header -->
+                            <div class="flex items-center justify-between px-5 py-6 sm:px-6 border-b border-slate-200/60 bg-white/40">
+                                <h2 class="text-2xl font-bold text-slate-900 flex items-center gap-3">
+                                    <i class="fa-solid fa-cart-shopping text-blue-600"></i> Your Cart
+                                </h2>
+                                <button @click="isCartOpen = false" class="text-slate-400 hover:text-slate-800 bg-white/50 hover:bg-white rounded-full w-10 h-10 flex items-center justify-center shadow-sm transition-all focus:outline-none">
+                                    <i class="fa-solid fa-xmark text-lg"></i>
+                                </button>
+                            </div>
+
+                            <!-- Cart Items -->
+                            <div class="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+                                <template x-if="cart.length === 0">
+                                    <div class="text-center flex flex-col items-center justify-center h-full opacity-60">
+                                        <i class="fa-solid fa-basket-shopping text-6xl text-slate-300 mb-4"></i>
+                                        <p class="text-lg text-slate-600 font-medium">Your cart is currently empty</p>
+                                    </div>
+                                </template>
+
+                                <ul role="list" class="-my-6 divide-y divide-slate-200/60">
+                                    <template x-for="item in cart" :key="item.id">
+                                        <li class="flex py-6">
+                                            <div class="h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 shadow-sm bg-white">
+                                                <img :src="item.image" :alt="item.name" class="h-full w-full object-cover object-center">
+                                            </div>
+
+                                            <div class="ml-4 flex flex-1 flex-col justify-between">
+                                                <div>
+                                                    <div class="flex justify-between text-base font-bold text-slate-900">
+                                                        <h3 class="line-clamp-2 pr-2 text-sm leading-tight" x-text="item.name"></h3>
+                                                        <p class="ml-2 whitespace-nowrap text-blue-600">₹<span x-text="item.price * item.quantity"></span></p>
+                                                    </div>
+                                                    <p class="mt-1 text-xs text-slate-500 uppercase tracking-wide font-semibold" x-text="item.category"></p>
+                                                </div>
+                                                <div class="flex flex-1 items-end justify-between text-sm mt-3">
+                                                    
+                                                    <!-- Quantity Adjuster -->
+                                                    <div class="flex items-center border border-slate-200 rounded-lg bg-white shadow-sm overflow-hidden">
+                                                        <button @click="updateQuantity(item.id, -1)" class="px-3 py-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition active:bg-slate-200">
+                                                            <i class="fa-solid" :class="item.quantity === 1 ? 'fa-trash-can text-red-500' : 'fa-minus'"></i>
+                                                        </button>
+                                                        <span class="font-bold w-8 text-center text-slate-800" x-text="item.quantity"></span>
+                                                        <button @click="updateQuantity(item.id, 1)" class="px-3 py-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition active:bg-slate-200">
+                                                            <i class="fa-solid fa-plus"></i>
+                                                        </button>
+                                                    </div>
+
+                                                </div>
+                                            </div>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </div>
+
+                            <!-- Cart Summary Footer -->
+                            <div class="border-t border-slate-200/60 px-5 py-6 sm:px-6 glass-header">
+                                <div class="flex justify-between text-lg font-bold text-slate-900 mb-2">
+                                    <p>Subtotal</p>
+                                    <p>₹<span x-text="cartTotal"></span></p>
+                                </div>
+                                <p class="text-sm text-slate-500 mb-6 font-medium">Shipping and taxes calculated at checkout.</p>
+                                
+                                <div>
+                                    <!-- Send Order Button (Green WhatsApp CTA) -->
+                                    <button @click="sendWhatsAppOrder()" 
+                                        :disabled="cart.length === 0"
+                                        :class="cart.length === 0 ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-green-600 hover:shadow-[0_8px_20px_rgba(34,197,94,0.3)] active:scale-[0.98]'"
+                                        class="flex w-full items-center justify-center gap-3 rounded-2xl bg-green-500 px-6 py-4 text-base font-bold text-white shadow-md transition-all focus:outline-none focus:ring-4 focus:ring-green-300">
+                                        <i class="fa-brands fa-whatsapp text-2xl"></i>
+                                        <span>Send Order via WhatsApp</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        function catalogApp() {
+            return {
+                // Config
+                whatsappNumber: '919876543210', 
+
+                // State
+                searchQuery: '',
+                selectedCategory: 'All',
+                cart: [],
+                isCartOpen: false,
+
+                // Sample Products Data
+                products: [
+                    { id: 1, name: 'Premium Noise-Cancelling Headphones', price: 12999, category: 'Audio', image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80' },
+                    { id: 2, name: 'Smart Fitness Tracker Watch V2', price: 4999, category: 'Electronics', image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80' },
+                    { id: 3, name: 'Ergonomic Mesh Office Chair', price: 8500, category: 'Furniture', image: 'https://images.unsplash.com/photo-1505843490538-5133c6c7d0e1?auto=format&fit=crop&w=600&q=80' },
+                    { id: 4, name: 'Nordic Oak Coffee Table minimalist', price: 13200, category: 'Furniture', image: 'https://images.unsplash.com/photo-1533090481720-856c6e3c1fdc?auto=format&fit=crop&w=600&q=80' },
+                    { id: 5, name: 'Organic Cotton Essential Tee', price: 899, category: 'Apparel', image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=600&q=80' },
+                    { id: 6, name: 'Vintage Wash Denim Jacket Classic', price: 3499, category: 'Apparel', image: 'https://images.unsplash.com/photo-1576871337632-b9aef4c17ab9?auto=format&fit=crop&w=600&q=80' },
+                    { id: 7, name: 'Artisan Crafted Ceramic Mug', price: 550, category: 'Home', image: 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?auto=format&fit=crop&w=600&q=80' },
+                    { id: 8, name: 'Matte Stainless Steel Flask 1L', price: 1199, category: 'Home', image: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?auto=format&fit=crop&w=600&q=80' }
+                ],
+                
+                // Computed: Unique Categories Set
+                get categories() {
+                    const cats = Array.from(new Set(this.products.map(p => p.category)));
+                    return ['All', ...cats.sort()];
+                },
+                
+                // Computed: Filtered products array
+                get filteredProducts() {
+                    return this.products.filter(p => {
+                        const matchCat = this.selectedCategory === 'All' || p.category === this.selectedCategory;
+                        const matchSearch = p.name.toLowerCase().includes(this.searchQuery.toLowerCase().trim());
+                        return matchCat && matchSearch;
+                    });
+                },
+                
+                // Computed: Grand Total in Cart
+                get cartTotal() {
+                    return this.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                },
+                
+                // Computed: Total items count
+                get cartCount() {
+                    return this.cart.reduce((count, item) => count + item.quantity, 0);
+                },
+                
+                // Methods
+                addToCart(product) {
+                    const existing = this.cart.find(i => i.id === product.id);
+                    if(existing) {
+                        existing.quantity++;
+                    } else {
+                        this.cart.push({...product, quantity: 1});
+                    }
+                },
+                
+                updateQuantity(id, delta) {
+                    const item = this.cart.find(i => i.id === id);
+                    if(item) {
+                        item.quantity += delta;
+                        if(item.quantity <= 0) {
+                            this.cart = this.cart.filter(i => i.id !== id);
+                        }
+                    }
+                },
+                
+                sendWhatsAppOrder() {
+                    if(this.cart.length === 0) return;
+                    
+                    // Format required by user
+                    let text = "New Order: \n";
+                    this.cart.forEach(item => {
+                        text += `- ${item.quantity}x ${item.name} \n`;
+                    });
+                    text += `Total: ₹${this.cartTotal}`;
+                    
+                    // URI Encoding for WhatsApp link
+                    const encodedText = encodeURIComponent(text);
+                    const url = `https://wa.me/${this.whatsappNumber}?text=${encodedText}`;
+                    
+                    window.open(url, '_blank');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
